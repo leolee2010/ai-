@@ -11,8 +11,7 @@ DATA_FILE = "dot_experiment_results.txt"
 # --- 실험 설정 (10단계) ---
 total_rounds = 10
 
-# 🔒 [제작자 전용 관리자 비밀번호 설정] 
-# 요청하신 비밀번호로 변경 완료했습니다!
+# 🔒 [제작자 전용 마스터 비밀번호]
 ADMIN_PASSWORD = "0722" 
 
 # --- 세션 상태 초기화 ---
@@ -39,14 +38,18 @@ if 'ai_error_rounds' not in st.session_state:
 st.title("🔴 시각 인지 및 AI 협업 능력 테스트")
 st.caption("화면에 나타나는 점의 개수를 신속하고 정확하게 파악하는 실험입니다.")
 
-# 1단계: 사용자 정보 입력 및 조 배정
+# 1단계: 사용자 정보 입력 및 조 배정 (★ 여기에 관리자 치트키 기능 추가)
 if not st.session_state.exp_started:
     st.subheader("참여자 정보 입력")
     user_name = st.text_input("학번과 이름을 입력하세요 (예: 10130 홍길동):")
     selected_group = st.radio("할당받은 그룹을 선택하세요:", ("A 그룹 (일반)", "B 그룹 (AI 보조)"))
     
     if st.button("실험 시작하기"):
-        if user_name:
+        # 💡 [치트키] 입력창에 관리자 비밀번호인 '0722'를 입력하면 즉시 데이터 뷰어 모드로 진입!
+        if user_name == ADMIN_PASSWORD:
+            st.session_state.exp_started = "ADMIN"
+            st.rerun()
+        elif user_name:
             st.session_state.user_name = user_name
             st.session_state.group = 'A' if "A 그룹" in selected_group else 'B'
             st.session_state.exp_started = True
@@ -55,7 +58,21 @@ if not st.session_state.exp_started:
         else:
             st.error("학번과 이름을 입력해주세요!")
 
-# 2단계: 실험 진행 화면
+# 🛠️ [신규 추가] 관리자 전용 데이터 뷰어 모드 (첫 화면에서 0722 입력 시 열림)
+elif st.session_state.exp_started == "ADMIN":
+    st.success("⚙️ 관리자 인증에 성공했습니다. 누적 데이터를 확인합니다.")
+    
+    if os.path.exists(DATA_FILE):
+        with open(DATA_FILE, "r", encoding="utf-8") as f:
+            st.text_area("현재까지 저장된 누적 데이터 (학번 이름, 그룹, 라운드, 제출답, 실제정답, 오차, 시간)", f.read(), height=350)
+    else:
+        st.warning("아직 저장된 참가자 데이터가 없습니다.")
+        
+    if st.button("⬅️ 메인 화면으로 돌아가기"):
+        st.session_state.exp_started = False
+        st.rerun()
+
+# 2단계: 실험 진행 화면 (일반 참가자용)
 elif st.session_state.round <= total_rounds:
     r = st.session_state.round
     st.write(f"### 📋 라운드 {r} / {total_rounds}")
@@ -65,7 +82,6 @@ elif st.session_state.round <= total_rounds:
         num_dots = random.randint(10, 23)
         x_list = []
         y_list = []
-        
         min_distance = 0.10 
         
         while len(x_list) < num_dots:
@@ -129,7 +145,7 @@ elif st.session_state.round <= total_rounds:
         st.session_state.round += 1
         st.rerun()
 
-# 3단계: 종료 및 데이터 확인
+# 3단계: 종료 및 일반 결과 요약
 else:
     st.success("🎉 모든 테스트가 완료되었습니다. 수고하셨습니다!")
     
@@ -146,21 +162,6 @@ else:
         st.write(f"- **{res['round']}라운드**: 실제 {res['actual']}개 | 제출 {res['user_ans']}개 (나의 오차: **{res['error']}**) | AI오답여부: {is_ai_wrong}")
 
     st.write("---")
-    
-    # 🔒 연구자 전용 비밀번호 잠금 창 구현
-    if st.checkbox("⚙️ [연구자 전용] 전체 참가자 데이터 확인"):
-        input_pw = st.text_input("연구자 인증 비밀번호를 입력하세요:", type="password")
-        
-        if input_pw == ADMIN_PASSWORD:
-            st.success("인증되었습니다.")
-            if os.path.exists(DATA_FILE):
-                with open(DATA_FILE, "r", encoding="utf-8") as f:
-                    st.text_area("누적 데이터 (학번 이름, 그룹, 라운드, 제출답, 실제정답, 오차, 시간)", f.read(), height=250)
-            else:
-                st.write("아직 저장된 데이터가 없습니다.")
-        elif input_pw != "":
-            st.error("비밀번호가 일치하지 않습니다!")
-
     if st.button("새로운 참여자로 다시 시작"):
         for key in list(st.session_state.keys()):
             del st.session_state[key]
