@@ -50,7 +50,6 @@ if not st.session_state.exp_started:
     selected_group = st.radio("할당받은 그룹을 선택하세요:", ("A 그룹 (일반)", "B 그룹 (AI 보조)"))
     
     if st.button("실험 시작하기"):
-        # 관리자 비밀번호 치트키 체크 (학번 창에 0722 입력 시 진입)
         if input_id == ADMIN_PASSWORD:
             st.session_state.exp_started = "ADMIN"
             st.rerun()
@@ -91,7 +90,6 @@ elif st.session_state.exp_started == "ADMIN":
     
     if os.path.exists(DATA_FILE):
         with open(DATA_FILE, "r", encoding="utf-8") as f:
-            # 💡 상단 가이드 문구 수정
             st.caption("※ 데이터 포맷: 학번 이름,그룹,라운드,제출답,실제정답,참가자정오(O/X),소요시간,AI가이드정오(O/X)")
             st.text_area("현재까지 저장된 누적 데이터", f.read(), height=350)
     else:
@@ -154,23 +152,29 @@ elif st.session_state.round <= total_rounds:
     st.pyplot(fig)
     plt.close(fig)
 
-    user_answer = st.number_input("화면에 보이는 빨간 점은 총 몇 개입니까?", min_value=0, step=1, key=f"ans_{r}")
+    # 💡 [핵심 변경] 숫자 전용 입력창(st.number_input)으로 원복하되, value=None을 주어 빈 칸으로 시작하게 함
+    # 최솟값을 0으로 두어 마이너스 입력도 방지합니다.
+    user_answer = st.number_input("화면에 보이는 빨간 점은 총 몇 개입니까?", min_value=0, step=1, value=None, key=f"ans_{r}")
     
     if st.button("정답 제출 및 다음 단계"):
-        time_taken = time.time() - st.session_state.start_time
-        
-        # 💡 [변경 포인트 1] 숫자가 아닌 맞았으면 'O', 틀렸으면 'X' 문자열로 상태 기록
-        user_status = "O" if user_answer == actual_dots else "X"
-        
-        st.session_state.user_results.append({
-            'round': r,
-            'user_ans': user_answer,
-            'actual': actual_dots,
-            'status': user_status,  # 숫자가 아닌 O/X 저장
-            'time': round(time_taken, 2)
-        })
-        st.session_state.round += 1
-        st.rerun()
+        # 빈 칸으로 제출하려고 할 때 방어
+        if user_answer is None:
+            st.error("🚨 숫자를 입력해주세요!")
+        else:
+            time_taken = time.time() - st.session_state.start_time
+            
+            # 정오 판정
+            user_status = "O" if user_answer == actual_dots else "X"
+            
+            st.session_state.user_results.append({
+                'round': r,
+                'user_ans': int(user_answer),
+                'actual': actual_dots,
+                'status': user_status,  
+                'time': round(time_taken, 2)
+            })
+            st.session_state.round += 1
+            st.rerun()
 
 # 3단계: 종료 및 결과 저장
 else:
@@ -180,8 +184,6 @@ else:
         with open(DATA_FILE, "a", encoding="utf-8") as f:
             for res in st.session_state.user_results:
                 ai_status = "X" if res['round'] in st.session_state.ai_error_rounds else "O"
-                
-                # 💡 [변경 포인트 2] 요청하신 양식인 6번째 자리에 숫자 대신 res['status'] (O 또는 X)가 들어가도록 조립
                 line = f"{st.session_state.user_name},{st.session_state.group},{res['round']},{res['user_ans']},{res['actual']},{res['status']},{res['time']},{ai_status}\n"
                 f.write(line)
         st.session_state.saved = True
