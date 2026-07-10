@@ -28,9 +28,11 @@ if 'round_data' not in st.session_state:
 if 'start_time' not in st.session_state:
     st.session_state.start_time = 0
 
-# AI가 오답을 제시할 5개의 라운드와 오차 랜덤 생성
+# 4~10라운드 중 AI가 오답을 제시할 라운드의 '개수'와 '위치'를 모두 랜덤화!
 if 'ai_error_rounds' not in st.session_state:
-    error_rounds = random.sample(range(1, total_rounds + 1), 5)
+    candidate_rounds = list(range(4, total_rounds + 1))
+    num_error_rounds = random.randint(3, 6)
+    error_rounds = random.sample(candidate_rounds, num_error_rounds)
     st.session_state.ai_error_rounds = {
         r: random.choice([-2, -1, 1, 2]) for r in error_rounds
     }
@@ -38,33 +40,49 @@ if 'ai_error_rounds' not in st.session_state:
 st.title("🔴 시각 인지 및 AI 협업 능력 테스트")
 st.caption("화면에 나타나는 점의 개수를 신속하고 정확하게 파악하는 실험입니다.")
 
-# 1단계: 사용자 정보 입력 및 조 배정 (★ 여기에 관리자 치트키 기능 추가)
+# 1단계: 사용자 정보 입력 및 조 배정
 if not st.session_state.exp_started:
     st.subheader("참여자 정보 입력")
-    user_name = st.text_input("학번과 이름을 입력하세요 (예: 10130 홍길동):")
+    user_name = st.text_input("학번과 이름을 입력하세요 (예: 10130 홍길동):").strip()
     selected_group = st.radio("할당받은 그룹을 선택하세요:", ("A 그룹 (일반)", "B 그룹 (AI 보조)"))
     
     if st.button("실험 시작하기"):
-        # 💡 [치트키] 입력창에 관리자 비밀번호인 '0722'를 입력하면 즉시 데이터 뷰어 모드로 진입!
         if user_name == ADMIN_PASSWORD:
             st.session_state.exp_started = "ADMIN"
             st.rerun()
         elif user_name:
-            st.session_state.user_name = user_name
-            st.session_state.group = 'A' if "A 그룹" in selected_group else 'B'
-            st.session_state.exp_started = True
-            st.session_state.round = 1
-            st.rerun()
+            # 💡 [중복 참여 검증 로직] 데이터 파일에서 기존 참여자 명단 조회
+            is_duplicated = False
+            if os.path.exists(DATA_FILE):
+                with open(DATA_FILE, "r", encoding="utf-8") as f:
+                    for line in f:
+                        if line.strip():
+                            # 저장된 포맷의 첫 번째 항목(학번 이름) 추출
+                            existing_user = line.split(",")[0].strip()
+                            if existing_user == user_name:
+                                is_duplicated = True
+                                break
+            
+            # 중복된 사용자가 아니라면 실험 시작, 중복이라면 차단
+            if is_duplicated:
+                st.error("🚨 이미 실험에 참여한 학번/이름입니다. 중복 참여는 불가능합니다!")
+            else:
+                st.session_state.user_name = user_name
+                st.session_state.group = 'A' if "A 그룹" in selected_group else 'B'
+                st.session_state.exp_started = True
+                st.session_state.round = 1
+                st.rerun()
         else:
             st.error("학번과 이름을 입력해주세요!")
 
-# 🛠️ [신규 추가] 관리자 전용 데이터 뷰어 모드 (첫 화면에서 0722 입력 시 열림)
+# 관리자 전용 데이터 뷰어 모드 (첫 화면에서 0722 입력 시 열림)
 elif st.session_state.exp_started == "ADMIN":
     st.success("⚙️ 관리자 인증에 성공했습니다. 누적 데이터를 확인합니다.")
     
     if os.path.exists(DATA_FILE):
         with open(DATA_FILE, "r", encoding="utf-8") as f:
-            st.text_area("현재까지 저장된 누적 데이터 (학번 이름, 그룹, 라운드, 제출답, 실제정답, 오차, 시간)", f.read(), height=350)
+            st.caption("※ 데이터 포맷: 학번 이름,그룹,라운드,제출답,실제정답,오차,소요시간,AI가이드정오(O=정답/X=오답)")
+            st.text_area("현재까지 저장된 누적 데이터", f.read(), height=350)
     else:
         st.warning("아직 저장된 참가자 데이터가 없습니다.")
         
@@ -77,7 +95,6 @@ elif st.session_state.round <= total_rounds:
     r = st.session_state.round
     st.write(f"### 📋 라운드 {r} / {total_rounds}")
     
-    # 점 개수를 10~23개 사이로 조정 및 겹침 방지
     if f'round_{r}_dots' not in st.session_state.round_data:
         num_dots = random.randint(10, 23)
         x_list = []
@@ -108,7 +125,6 @@ elif st.session_state.round <= total_rounds:
     dots_x = st.session_state.round_data[f'round_{r}_x']
     dots_y = st.session_state.round_data[f'round_{r}_y']
 
-    # B그룹 가이드 메시지
     if st.session_state.group == 'B':
         if r in st.session_state.ai_error_rounds:
             ai_pred = actual_dots + st.session_state.ai_error_rounds[r]
@@ -116,7 +132,6 @@ elif st.session_state.round <= total_rounds:
         else:
             st.info(f"💡 [AI 가이드]: 해당 화면의 빨간 점은 약 **{actual_dots}개**로 예측됩니다.")
 
-    # 그래프 그리기
     fig, ax = plt.subplots(figsize=(6, 4))
     fig.patch.set_facecolor('black')
     ax.set_facecolor('black')
@@ -128,7 +143,6 @@ elif st.session_state.round <= total_rounds:
     st.pyplot(fig)
     plt.close(fig)
 
-    # 정답 입력받기
     user_answer = st.number_input("화면에 보이는 빨간 점은 총 몇 개입니까?", min_value=0, step=1, key=f"ans_{r}")
     
     if st.button("정답 제출 및 다음 단계"):
@@ -145,21 +159,22 @@ elif st.session_state.round <= total_rounds:
         st.session_state.round += 1
         st.rerun()
 
-# 3단계: 종료 및 일반 결과 요약
+# 3단계: 종료 및 결과 저장
 else:
     st.success("🎉 모든 테스트가 완료되었습니다. 수고하셨습니다!")
     
     if 'saved' not in st.session_state:
         with open(DATA_FILE, "a", encoding="utf-8") as f:
             for res in st.session_state.user_results:
-                line = f"{st.session_state.user_name},{st.session_state.group},{res['round']},{res['user_ans']},{res['actual']},{res['error']},{res['time']}\n"
+                ai_status = "X" if res['round'] in st.session_state.ai_error_rounds else "O"
+                line = f"{st.session_state.user_name},{st.session_state.group},{res['round']},{res['user_ans']},{res['actual']},{res['error']},{res['time']},{ai_status}\n"
                 f.write(line)
         st.session_state.saved = True
 
     st.write("### 📊 나의 결과 요약")
     for res in st.session_state.user_results:
-        is_ai_wrong = "O" if (st.session_state.group == 'B' and res['round'] in st.session_state.ai_error_rounds) else "X"
-        st.write(f"- **{res['round']}라운드**: 실제 {res['actual']}개 | 제출 {res['user_ans']}개 (나의 오차: **{res['error']}**) | AI오답여부: {is_ai_wrong}")
+        ai_status = "X" if res['round'] in st.session_state.ai_error_rounds else "O"
+        st.write(f"- **{res['round']}라운드**: 실제 {res['actual']}개 | 제출 {res['user_ans']}개 (나의 오차: **{res['error']}**) | AI 가이드 정오: **{ai_status}**")
 
     st.write("---")
     if st.button("새로운 참여자로 다시 시작"):
