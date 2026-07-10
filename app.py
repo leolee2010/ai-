@@ -3,19 +3,19 @@ import random
 import time
 import os
 import matplotlib.pyplot as plt
+import math
 
 # --- 데이터 저장 파일 설정 ---
 DATA_FILE = "dot_experiment_results.txt"
 
 # --- 실험 설정 (10단계) ---
 total_rounds = 10
-# 6라운드부터 AI가 고의로 오답 가이드를 제공 (실제 개수 대비 오차)
 ai_error_rounds = {
-    6: 1,   # 실제 정답보다 +1개 높여서 말함
-    7: -2,  # 실제 정답보다 -2개 낮춰서 말함
-    8: 2,   # 실제 정답보다 +2개 높여서 말함
-    9: -3,  # 실제 정답보다 -3개 낮춰서 말함
-    10: 3   # 실제 정답보다 +3개 높여서 말함
+    6: 1,   # 실제 정답보다 +1
+    7: -2,  # 실제 정답보다 -2
+    8: 2,   # 실제 정답보다 +2
+    9: -3,  # 실제 정답보다 -3
+    10: 3   # 실제 정답보다 +3
 }
 
 # --- 세션 상태 초기화 ---
@@ -35,10 +35,10 @@ if 'start_time' not in st.session_state:
 st.title("🔴 시각 인지 및 AI 협업 능력 테스트")
 st.caption("화면에 나타나는 점의 개수를 신속하고 정확하게 파악하는 실험입니다.")
 
-# 1단계: 사용자 정보 입력 (학번/이름으로 수정) 및 조 배정
+# 1단계: 사용자 정보 입력 및 조 배정
 if not st.session_state.exp_started:
     st.subheader("참여자 정보 입력")
-    user_name = st.text_input("학번과 이름을 입력하세요 (예: 10130 홍길동):")
+    user_name = st.text_input("학번과 이름을 입력하세요 (예: 202612345 홍길동):")
     selected_group = st.radio("할당받은 그룹을 선택하세요:", ("A 그룹 (일반)", "B 그룹 (AI 보조)"))
     
     if st.button("실험 시작하기"):
@@ -56,22 +56,42 @@ elif st.session_state.round <= total_rounds:
     r = st.session_state.round
     st.write(f"### 📋 라운드 {r} / {total_rounds}")
     
-    # 💡 점 개수를 15~30개 사이로 대폭 하향 조정!
+    # 점 개수 생성 및 겹침 방지 배치 알고리즘
     if f'round_{r}_dots' not in st.session_state.round_data:
         num_dots = random.randint(15, 30)
-        x = [random.random() for _ in range(num_dots)]
-        y = [random.random() for _ in range(num_dots)]
+        x_list = []
+        y_list = []
         
+        min_distance = 0.08 # 점들 사이의 최소 거리 설정 (0~1 범위 기준)
+        
+        # 설정한 개수만큼 겹치지 않는 좌표 찾기
+        while len(x_list) < num_dots:
+            potential_x = random.uniform(0.05, 0.95)
+            potential_y = random.uniform(0.05, 0.95)
+            
+            # 기존 점들과의 거리 비교
+            is_too_close = False
+            for ex, ey in zip(x_list, y_list):
+                dist = math.sqrt((potential_x - ex)**2 + (potential_y - ey)**2)
+                if dist < min_distance:
+                    is_too_close = True
+                    break
+            
+            # 너무 가깝지 않다면 좌표 추가
+            if not is_too_close:
+                x_list.append(potential_x)
+                y_list.append(potential_y)
+                
         st.session_state.round_data[f'round_{r}_dots'] = num_dots
-        st.session_state.round_data[f'round_{r}_x'] = x
-        st.session_state.round_data[f'round_{r}_y'] = y
+        st.session_state.round_data[f'round_{r}_x'] = x_list
+        st.session_state.round_data[f'round_{r}_y'] = y_list
         st.session_state.start_time = time.time()
 
     actual_dots = st.session_state.round_data[f'round_{r}_dots']
     dots_x = st.session_state.round_data[f'round_{r}_x']
     dots_y = st.session_state.round_data[f'round_{r}_y']
 
-    # B그룹에게만 AI 예측치 제공 (개수가 줄어들었으므로 오차 범위도 살짝 좁힘)
+    # B그룹 가이드 메시지
     if st.session_state.group == 'B':
         if r in ai_error_rounds:
             ai_pred = actual_dots + ai_error_rounds[r]
@@ -79,11 +99,17 @@ elif st.session_state.round <= total_rounds:
         else:
             st.success(f"💡 [AI 가이드]: 해당 화면의 빨간 점은 약 **{actual_dots}개**로 예측됩니다.")
 
-    # 검은 배경에 빨간 점 그래프 생성 (점 크기를 조금 더 키워서 보기 편하게 조절)
+    # 그래프 그리기
     fig, ax = plt.subplots(figsize=(6, 4))
     fig.patch.set_facecolor('black')
     ax.set_facecolor('black')
-    ax.scatter(dots_x, dots_y, color='red', s=60) # 점 크기를 40 -> 60으로 확대
+    
+    # 💡 윤곽선 효과: edgecolor='white'와 linewidth를 주어 흰색 테두리를 생성함
+    ax.scatter(dots_x, dots_y, color='red', s=80, edgecolor='white', linewidth=1.2)
+    
+    # 그래프 테두리 여백 고정 및 축 숨기기
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
     ax.axis('off') 
     
     st.pyplot(fig)
@@ -106,7 +132,7 @@ elif st.session_state.round <= total_rounds:
         st.session_state.round += 1
         st.rerun()
 
-# 3단계: 종료 및 연구자 데이터 확인
+# 3단계: 종료 및 데이터 확인
 else:
     st.success("🎉 모든 테스트가 완료되었습니다. 수고하셨습니다!")
     
